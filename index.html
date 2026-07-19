@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPU Scheduling Simulator — Diagnostics Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="console-header">
+  <div class="console-header__brand">
+    <span class="console-header__mark">CPU&#8202;/&#8202;SCHED</span>
+    <span class="console-header__sub">Process Scheduling Diagnostics Console</span>
+  </div>
+  <div class="console-header__status">
+    <span class="led led--live" id="systemLed" aria-hidden="true"></span>
+    <span id="systemLedLabel">SYSTEM IDLE</span>
+  </div>
+</header>
+
+<main class="dashboard-grid">
+
+  <!-- ================= LEFT COLUMN — CONTROL STACK ================= -->
+  <section class="control-stack" aria-label="Process controls">
+
+    <!-- Panel 1: Process Input Panel -->
+    <fieldset class="panel" id="processInputPanel">
+      <legend class="panel__title">01 · Process Input</legend>
+
+      <div class="field">
+        <label for="inputName">Process Name</label>
+        <input type="text" id="inputName" name="inputName" placeholder="e.g. P1" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="inputType">Process Type</label>
+        <select id="inputType" name="inputType">
+          <option value="foreground">Foreground</option>
+          <option value="background">Background</option>
+          <option value="system">System</option>
+          <option value="batch">Batch</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="inputArrival">Arrival Time</label>
+          <input type="number" id="inputArrival" name="inputArrival" min="0" step="1" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="inputBurst">Exec Time</label>
+          <input type="number" id="inputBurst" name="inputBurst" min="1" step="1" placeholder="1">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="inputPriority">Priority</label>
+        <input type="number" id="inputPriority" name="inputPriority" min="1" step="1" placeholder="1 = highest">
+      </div>
+    </fieldset>
+
+    <!-- Panel 2: Process Actions Panel -->
+    <fieldset class="panel" id="processActionsPanel">
+      <legend class="panel__title">02 · Queue Actions</legend>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="randomLength">Random Batch Size</label>
+          <input type="number" id="randomLength" name="randomLength" min="1" step="1" placeholder="5">
+        </div>
+        <div class="field">
+          <label for="positionInput">Target Position</label>
+          <input type="number" id="positionInput" name="positionInput" min="0" step="1" placeholder="index">
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button type="button" id="btnGenerateRandom" class="btn btn--ghost">Generate Random</button>
+        <button type="button" id="btnEnqueue" class="btn btn--primary">Enqueue</button>
+        <button type="button" id="btnDequeue" class="btn btn--danger">Dequeue</button>
+        <button type="button" id="btnUpdate" class="btn btn--ghost">Update</button>
+      </div>
+    </fieldset>
+
+    <!-- Panel 4: Algorithm Panel -->
+    <fieldset class="panel" id="algorithmPanel">
+      <legend class="panel__title">03 · Algorithm</legend>
+
+      <div class="field">
+        <label for="algorithmSelect">Scheduling Algorithm</label>
+        <select id="algorithmSelect" name="algorithmSelect">
+          <option value="fcfs">FCFS — First Come First Serve</option>
+          <option value="sjf">SJF — Shortest Job First</option>
+          <option value="srtf">SRTF — Shortest Remaining Time First</option>
+          <option value="priority-np">Priority — Non-Preemptive</option>
+          <option value="priority-p">Priority — Preemptive</option>
+          <option value="rr">Round Robin</option>
+        </select>
+      </div>
+
+      <div class="field field--slider" id="quantumField">
+        <label for="quantumSlider">Time Quantum <span class="field__value" id="quantumValue">2</span></label>
+        <input type="range" id="quantumSlider" name="quantumSlider" min="1" max="10" step="1" value="2">
+      </div>
+    </fieldset>
+
+    <!-- Panel 5: Action Message Panel -->
+    <div class="panel panel--message" id="actionMessagePanel" role="status" aria-live="polite">
+      <legend class="panel__title">04 · Console Log</legend>
+      <p id="actionMessage" class="action-message">Awaiting input — add processes to the queue to begin.</p>
+    </div>
+
+    <!-- Panel 9: Simulation Velocity Controls -->
+    <fieldset class="panel" id="velocityPanel">
+      <legend class="panel__title">05 · Simulation Velocity</legend>
+
+      <div class="field field--slider">
+        <label for="speedSlider">Playback Speed <span class="field__value" id="speedValue">1×</span></label>
+        <input type="range" id="speedSlider" name="speedSlider" min="1" max="8" step="1" value="1">
+      </div>
+
+      <div class="button-row">
+        <button type="button" id="btnSimulate" class="btn btn--primary btn--wide">▶ Simulate</button>
+        <button type="button" id="btnResetAll" class="btn btn--danger btn--wide">⟲ Reset All</button>
+      </div>
+    </fieldset>
+
+  </section>
+
+  <!-- ================= CENTER-RIGHT COLUMN — STATUS / STATS ================= -->
+  <section class="status-stack" aria-label="Process status and statistics">
+
+    <!-- Panel 3: Pending Queue Table -->
+    <div class="panel panel--table" id="pendingQueuePanel">
+      <h2 class="panel__title">06 · Pending Queue</h2>
+      <div class="table-scroll">
+        <table id="pendingQueueTable">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Process Name</th>
+              <th scope="col">Arrival</th>
+              <th scope="col">Exec</th>
+              <th scope="col">Priority</th>
+            </tr>
+          </thead>
+          <tbody id="pendingQueueBody">
+            <tr class="table-empty-row">
+              <td colspan="5">No processes queued yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 6: Live Simulation Status Table -->
+    <div class="panel panel--table" id="simStatusPanel">
+      <h2 class="panel__title">07 · Live Simulation Status</h2>
+      <div class="table-scroll">
+        <table id="simStatusTable">
+          <thead>
+            <tr>
+              <th scope="col">Process ID</th>
+              <th scope="col">Status</th>
+              <th scope="col">Completion %</th>
+              <th scope="col">Remaining Exec</th>
+              <th scope="col">Waiting Time</th>
+            </tr>
+          </thead>
+          <tbody id="simStatusBody">
+            <tr class="table-empty-row">
+              <td colspan="5">Simulation has not started.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 6b: Process Results Table (per-process final metrics) -->
+    <div class="panel panel--table" id="resultsPanel">
+      <h2 class="panel__title">08 · Process Results</h2>
+      <div class="table-scroll">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th scope="col">Process ID</th>
+              <th scope="col">Arrival</th>
+              <th scope="col">Burst</th>
+              <th scope="col">Completion</th>
+              <th scope="col">Turnaround</th>
+              <th scope="col">Response</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr class="table-empty-row">
+              <td colspan="6">Run a simulation to see per-process results.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="status-stack__row">
+      <!-- Panel 7: Metrics Panel -->
+      <div class="panel panel--metrics" id="metricsPanel">
+        <h2 class="panel__title">09 · Metrics</h2>
+        <div class="metric">
+          <span class="metric__label">Avg Waiting Time</span>
+          <span class="metric__value" id="metricAvgWaiting">0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Avg Execution Time</span>
+          <span class="metric__value" id="metricAvgExec">0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Total Execution Time</span>
+          <span class="metric__value" id="metricTotalExec">0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Avg Turnaround Time</span>
+          <span class="metric__value" id="metricAvgTurnaround">0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Avg Response Time</span>
+          <span class="metric__value" id="metricAvgResponse">0.00</span>
+        </div>
+      </div>
+
+      <!-- Panel 8: CPU Matrix Panel -->
+      <div class="panel panel--cpu" id="cpuMatrixPanel">
+        <h2 class="panel__title">10 · CPU Matrix</h2>
+        <div class="metric">
+          <span class="metric__label">CPU Status</span>
+          <span class="metric__value" id="cpuStatus">Idle</span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Next in Queue</span>
+          <span class="metric__value" id="nextQueueName">—</span>
+        </div>
+        <div class="field field--progress">
+          <label for="overallProgressBar">Overall Progress</label>
+          <div class="progress-track" id="overallProgressBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="progress-track__fill" id="overallProgressFill" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================= BOTTOM — GANTT CHART ================= -->
+  <section class="panel panel--gantt" id="ganttPanel" aria-label="Gantt chart timeline">
+    <h2 class="panel__title">11 · Gantt Timeline</h2>
+    <div class="gantt-scroll">
+      <div class="gantt-ruler" id="ganttRuler" aria-hidden="true"></div>
+      <div class="gantt-chart" id="ganttChart">
+        <p class="gantt-chart__placeholder" id="ganttPlaceholder">Timeline will render here once the simulation starts.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
