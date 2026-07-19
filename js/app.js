@@ -11,6 +11,7 @@ import * as processManager from './processManager.js';
 import * as algorithms from './algorithms.js';
 import * as simulationEngine from './simulationEngine.js';
 import * as uiRenderer from './uiRenderer.js';
+import * as exportManager from './exportManager.js';
 
 const ALGORITHM_LABELS = {
   fcfs: 'FCFS',
@@ -29,6 +30,7 @@ const dom = {};
  * (completionTime/turnaroundTime/responseTime) that the live snapshot
  * doesn't carry. */
 let lastSchedulingResult = null;
+let lastAlgorithmKey = null;
 
 function cacheDom() {
   dom.inputName = document.getElementById('inputName');
@@ -52,6 +54,7 @@ function cacheDom() {
   dom.quantumValue = document.getElementById('quantumValue');
   dom.allotmentField = document.getElementById('allotmentField');
   dom.allotmentInput = document.getElementById('allotmentInput');
+  dom.contextSwitchInput = document.getElementById('contextSwitchInput');
   dom.speedSlider = document.getElementById('speedSlider');
   dom.speedValue = document.getElementById('speedValue');
 
@@ -69,6 +72,7 @@ function cacheDom() {
   dom.metricAvgResponse = document.getElementById('metricAvgResponse');
 
   dom.resultsBody = document.getElementById('resultsBody');
+  dom.btnExportCsv = document.getElementById('btnExportCsv');
 
   dom.cpuStatus = document.getElementById('cpuStatus');
   dom.nextQueueName = document.getElementById('nextQueueName');
@@ -204,6 +208,7 @@ function handleSimulate() {
     result = algorithms.runScheduler(algorithmKey, processes, {
       timeQuantum: dom.quantumSlider.value,
       allotment: dom.allotmentInput.value,
+      contextSwitchDelay: dom.contextSwitchInput.value,
     });
   } catch (err) {
     showMessage(err.message, 'error');
@@ -218,8 +223,10 @@ function handleSimulate() {
   uiRenderer.resetGantt(dom.ganttChart);
   uiRenderer.resetSimStatusTable(dom.simStatusBody);
   uiRenderer.resetResultsTable(dom.resultsBody);
+  dom.btnExportCsv.disabled = true;
 
   lastSchedulingResult = result;
+  lastAlgorithmKey = algorithmKey;
 
   simulationEngine.configure({
     timeline: result.timeline,
@@ -255,6 +262,7 @@ function handleTick(snapshot) {
       processId: snapshot.cpu.processId,
       processName: snapshot.cpu.processName,
       level: snapshot.cpu.level,
+      isContextSwitch: snapshot.cpu.isContextSwitch,
     },
     dom.ganttChart
   );
@@ -267,15 +275,34 @@ function handleSimComplete(finalSnapshot) {
   uiRenderer.renderSystemLed(dom, false);
   if (lastSchedulingResult) {
     uiRenderer.renderResultsTable(lastSchedulingResult.processes, dom.resultsBody);
+    dom.btnExportCsv.disabled = false;
   }
   setQueueControlsDisabled(false);
   showMessage('Simulation complete.', 'success');
+}
+
+function handleExportCsv() {
+  if (!lastSchedulingResult) {
+    showMessage('Run a simulation before exporting results.', 'error');
+    return;
+  }
+
+  exportManager.exportResultsAsCsv({
+    algorithmKey: lastAlgorithmKey,
+    algorithmLabel: ALGORITHM_LABELS[lastAlgorithmKey] || lastAlgorithmKey,
+    processes: lastSchedulingResult.processes,
+    metrics: lastSchedulingResult.metrics,
+    contextSwitchDelay: Number(dom.contextSwitchInput.value) || 0,
+  });
+
+  showMessage('Process Results exported to CSV.', 'success');
 }
 
 function handleResetAll() {
   simulationEngine.stopSimulation();
   processManager.resetProcesses();
   lastSchedulingResult = null;
+  lastAlgorithmKey = null;
 
   refreshQueueTable();
   uiRenderer.resetSimStatusTable(dom.simStatusBody);
@@ -293,6 +320,8 @@ function handleResetAll() {
   dom.quantumSlider.value = '2';
   dom.quantumValue.textContent = '2';
   dom.allotmentInput.value = '';
+  dom.contextSwitchInput.value = '';
+  dom.btnExportCsv.disabled = true;
 
   clearInputFields();
   dom.positionInput.value = '';
@@ -338,6 +367,7 @@ function bindEvents() {
   dom.btnGenerateRandom.addEventListener('click', handleGenerateRandom);
   dom.btnSimulate.addEventListener('click', handleSimulate);
   dom.btnResetAll.addEventListener('click', handleResetAll);
+  dom.btnExportCsv.addEventListener('click', handleExportCsv);
 }
 
 function init() {

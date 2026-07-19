@@ -143,7 +143,11 @@ export function renderCpuMatrix(snapshot, dom) {
 
   if (dom.cpuStatus) {
     dom.cpuStatus.textContent =
-      snapshot.cpu.status === 'running' ? `Running · ${snapshot.cpu.processName}` : 'Idle';
+      snapshot.cpu.status === 'running'
+        ? `Running · ${snapshot.cpu.processName}`
+        : snapshot.cpu.isContextSwitch
+        ? 'Context Switching'
+        : 'Idle';
   }
   if (dom.nextQueueName) {
     dom.nextQueueName.textContent = snapshot.nextInQueue ? snapshot.nextInQueue.name : '—';
@@ -168,7 +172,7 @@ export function resetCpuMatrix(dom) {
 /**
  * Appends a single 1-second Gantt block for the current tick. Clears the
  * "not started" placeholder the first time it's called after a reset.
- * @param {{second:number, processId:?number, processName:?string, level?:?number}} entry
+ * @param {{second:number, processId:?number, processName:?string, level?:?number, isContextSwitch?:boolean}} entry
  * @param {HTMLElement} container
  */
 export function appendGanttBlock(entry, container) {
@@ -177,10 +181,14 @@ export function appendGanttBlock(entry, container) {
   if (placeholder) placeholder.remove();
 
   const hasLevel = entry.level !== undefined && entry.level !== null;
+  const isSwitch = !!entry.isContextSwitch;
   const block = document.createElement('div');
-  block.className = entry.processId === null ? 'gantt-block gantt-block--idle' : 'gantt-block';
-  block.title = `t=${entry.second} — ${entry.processId === null ? 'CPU idle' : entry.processName}${hasLevel ? ` (Q${entry.level})` : ''}`;
-  block.textContent = entry.processId === null ? '·' : entry.processName;
+  block.className =
+    entry.processId === null ? `gantt-block ${isSwitch ? 'gantt-block--switch' : 'gantt-block--idle'}` : 'gantt-block';
+  block.title = `t=${entry.second} — ${
+    entry.processId === null ? (isSwitch ? 'Context-switch overhead' : 'CPU idle') : entry.processName
+  }${hasLevel ? ` (Q${entry.level})` : ''}`;
+  block.textContent = entry.processId === null ? (isSwitch ? 'CS' : '·') : entry.processName;
   if (entry.processId !== null) {
     block.style.background = colorForProcess(entry.processId);
     if (hasLevel) block.dataset.level = String(entry.level);

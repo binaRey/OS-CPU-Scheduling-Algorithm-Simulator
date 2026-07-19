@@ -20,6 +20,7 @@ compute → timing → display pipeline:
 | Compute | `js/algorithms.js` | Pure functions — takes a process snapshot, returns `{ processes, timeline, metrics }` for a given algorithm. No DOM access. |
 | Timing | `js/simulationEngine.js` | Steps through a computed `timeline` on an interval clock and derives a live-state snapshot every tick. No DOM access. |
 | Display | `js/uiRenderer.js` | Pure DOM-writing functions — renders whatever snapshot it's handed. No state of its own. |
+| Export | `js/exportManager.js` | Builds a CSV from a completed result and triggers a browser download. Its only DOM touch is the throwaway `<a download>` anchor the browser's file-save mechanism needs. |
 | Orchestration | `js/app.js` | Wires DOM events to the layers above. |
 
 Because the compute layer is pure and DOM-free, every algorithm's output can be
@@ -62,10 +63,12 @@ cpu-scheduling-simulator/
 ├── css/
 │   └── style.css
 └── js/
-    ├── algorithms.js       — FCFS, SJF, SRTF, Priority (NP/P), Round Robin, MLFQ
+    ├── algorithms.js       — FCFS, SJF, SRTF, Priority (NP/P), Round Robin, MLFQ,
+    │                         + optional context-switch delay overhead
     ├── processManager.js   — in-memory process CRUD
     ├── simulationEngine.js — pure timing engine, no DOM
     ├── uiRenderer.js       — all DOM rendering
+    ├── exportManager.js    — CSV export + browser download trigger
     └── app.js              — event wiring, orchestration
 ```
 
@@ -103,6 +106,17 @@ Completion, Turnaround, Waiting, and Response times, plus averaged metrics.
   process is running at is shown live in the Live Simulation Status table and as
   a color-coded border on each Gantt chart block (see the legend above the chart).
 
+**Optional context-switching delay (bonus):** every algorithm above accepts a
+configurable `contextSwitchDelay` (the "Context-Switch Delay" field in the Algorithm
+panel, default 0 = off). Whenever the CPU timeline hands off from one process directly
+to a *different* process, that many overhead ticks are inserted before the next
+process runs — idle-to-process and process-to-idle handoffs are exempt, matching the
+usual simplified textbook treatment. Every process's Completion/Turnaround/Waiting/
+Response time and the averaged metrics (including Total Execution Time and CPU
+Utilization) are recomputed against the padded timeline, so the overhead is fully
+reflected in the results. Overhead ticks render as a red-hatched "CS" block on the
+Gantt chart, distinct from a plain idle gap.
+
 ---
 
 ## 5. Sample Input & Expected Output
@@ -134,7 +148,21 @@ Algorithm dropdown and compare the Process Results panel.
 
 ---
 
-## 6. Known Bugs, Limitations & Incomplete Features
+## 6. Exporting Results
+
+Once a simulation finishes, the **⭳ Export CSV** button above the Process Results
+table (panel 08) becomes active. It downloads a CSV with:
+
+- The algorithm name, the context-switch delay setting used, and a timestamp
+- The full per-process results table (Arrival, Burst, Completion, Turnaround,
+  Waiting, Response)
+- The averaged metrics (Avg Waiting/Turnaround/Response/Burst Time, Total Execution
+  Time, CPU Utilization)
+
+The button is disabled again whenever a new simulation starts or Reset All is pressed,
+so it can never export stale results.
+
+## 7. Known Bugs, Limitations & Incomplete Features
 
 - **Terminal/console deliverable (Phase 8):** not yet implemented. The project brief
   is ambiguous about whether the browser GUI satisfies the "must run in

@@ -11,7 +11,11 @@
  *                    completionTime, waitingTime, turnaroundTime }, ...],
  *     timeline: [{ second, processId, processName }, ...],   // one entry
  *                                                             // per unit of time, processId is
- *                                                             // null while the CPU is idle
+ *                                                             // null while the CPU is idle.
+ *                                                             // If a contextSwitchDelay option is
+ *                                                             // passed, idle entries inserted for
+ *                                                             // that overhead also carry
+ *                                                             // isContextSwitch: true.
  *     metrics: { avgWaitingTime, avgTurnaroundTime, avgBurstTime,
  *                totalExecutionTime, cpuUtilization }
  *   }
@@ -95,11 +99,75 @@ function buildMetrics(procs) {
   };
 }
 
-function buildResult(procs, timeline) {
+/**
+ * Phase 10 bonus — Context-switching delay.
+ * -------------------------------------------------------------
+ * Post-processes an already-computed timeline: wherever the running
+ * process changes from one process directly to a *different* process
+ * (idle-to-process and process-to-idle transitions are exempt — this
+ * matches the usual simplified textbook treatment), it inserts
+ * `delay` overhead ticks in between. Those ticks never belong to any
+ * process's burst time; they just push everything after them later
+ * in wall-clock time, which is exactly what real context-switch
+ * overhead does. Every process's completion/turnaround/waiting/
+ * response time is then recomputed against the padded timeline so
+ * the numbers stay internally consistent. A delay of 0 (the default)
+ * is a no-op and returns the original timeline untouched.
+ * ------------------------------------------------------------- */
+function applyContextSwitchDelay(procs, timeline, contextSwitchDelay) {
+  const delay = Math.max(0, Math.floor(Number(contextSwitchDelay)) || 0);
+  if (delay === 0 || timeline.length === 0) {
+    return { procs, timeline };
+  }
+
+  const padded = [];
+  let second = timeline[0].second;
+  let lastRunningId = null;
+
+  timeline.forEach((entry) => {
+    const isSwitch = lastRunningId !== null && entry.processId !== null && entry.processId !== lastRunningId;
+
+    if (isSwitch) {
+      for (let i = 0; i < delay; i += 1) {
+        padded.push({ second, processId: null, processName: null, level: null, isContextSwitch: true });
+        second += 1;
+      }
+    }
+
+    padded.push({ ...entry, second });
+    second += 1;
+
+    if (entry.processId !== null) lastRunningId = entry.processId;
+  });
+
+  // Recompute each process's timing figures against the padded timeline —
+  // first tick it appears on = response time, last tick + 1 = completion.
+  const byId = new Map(procs.map((p) => [p.id, { ...p, responseTime: null, completionTime: null }]));
+
+  padded.forEach((entry) => {
+    if (entry.processId === null) return;
+    const p = byId.get(entry.processId);
+    if (!p) return;
+    if (p.responseTime === null) p.responseTime = entry.second - p.arrivalTime;
+    p.completionTime = entry.second + 1;
+  });
+
+  byId.forEach((p) => {
+    if (p.completionTime !== null) {
+      p.turnaroundTime = p.completionTime - p.arrivalTime;
+      p.waitingTime = p.turnaroundTime - p.burstTime;
+    }
+  });
+
+  return { procs: Array.from(byId.values()), timeline: padded };
+}
+
+function buildResult(procs, timeline, contextSwitchDelay) {
+  const { procs: finalProcs, timeline: finalTimeline } = applyContextSwitchDelay(procs, timeline, contextSwitchDelay);
   return {
-    processes: procs.map((p) => ({ ...p })),
-    timeline,
-    metrics: buildMetrics(procs),
+    processes: finalProcs.map((p) => ({ ...p })),
+    timeline: finalTimeline,
+    metrics: buildMetrics(finalProcs),
   };
 }
 
@@ -118,7 +186,7 @@ function computeSafetyLimit(procs) {
  * the running process finishes (non-preemptive).
  * ------------------------------------------------------------- */
 
-function simulateBySelection(processes, selectFn, { preemptive }) {
+function simulateBySelection(processes, selectFn, { preemptive, contextSwitchDelay } = {}) {
   const procs = cloneForSimulation(processes);
   if (procs.length === 0) return emptyResult();
 
@@ -159,7 +227,7 @@ function simulateBySelection(processes, selectFn, { preemptive }) {
     time += 1;
   }
 
-  return buildResult(procs, timeline);
+  return buildResult(procs, timeline, contextSwitchDelay);
 }
 
 /* --- Selection rules (tie-break: the stated criterion, then arrival, then id) --- */
@@ -185,32 +253,32 @@ function byHighestPriority(ready) {
  * Algorithm 1: FCFS — First Come First Serve (non-preemptive)
  * ------------------------------------------------------------- */
 
-export function fcfs(processes) {
-  return simulateBySelection(processes, byEarliestArrival, { preemptive: false });
+export function fcfs(processes, { contextSwitchDelay } = {}) {
+  return simulateBySelection(processes, byEarliestArrival, { preemptive: false, contextSwitchDelay });
 }
 
 /* ---------------------------------------------------------------
  * Algorithm 2: SJF — Shortest Job First (non-preemptive)
  * ------------------------------------------------------------- */
 
-export function sjf(processes) {
-  return simulateBySelection(processes, byShortestRemainingTime, { preemptive: false });
+export function sjf(processes, { contextSwitchDelay } = {}) {
+  return simulateBySelection(processes, byShortestRemainingTime, { preemptive: false, contextSwitchDelay });
 }
 
 /* ---------------------------------------------------------------
  * Algorithm 3: SRTF — Shortest Remaining Time First (preemptive)
  * ------------------------------------------------------------- */
 
-export function srtf(processes) {
-  return simulateBySelection(processes, byShortestRemainingTime, { preemptive: true });
+export function srtf(processes, { contextSwitchDelay } = {}) {
+  return simulateBySelection(processes, byShortestRemainingTime, { preemptive: true, contextSwitchDelay });
 }
 
 /* ---------------------------------------------------------------
  * Algorithm 4: Priority Scheduling (preemptive or non-preemptive)
  * ------------------------------------------------------------- */
 
-export function priorityScheduling(processes, { preemptive = false } = {}) {
-  return simulateBySelection(processes, byHighestPriority, { preemptive });
+export function priorityScheduling(processes, { preemptive = false, contextSwitchDelay } = {}) {
+  return simulateBySelection(processes, byHighestPriority, { preemptive, contextSwitchDelay });
 }
 
 /* ---------------------------------------------------------------
@@ -222,7 +290,7 @@ export function priorityScheduling(processes, { preemptive = false } = {}) {
  * "pick the best-ranked ready process every tick".
  * ------------------------------------------------------------- */
 
-export function roundRobin(processes, timeQuantum) {
+export function roundRobin(processes, timeQuantum, { contextSwitchDelay } = {}) {
   const procs = cloneForSimulation(processes);
   if (procs.length === 0) return emptyResult();
 
@@ -278,7 +346,7 @@ export function roundRobin(processes, timeQuantum) {
     }
   }
 
-  return buildResult(procs, timeline);
+  return buildResult(procs, timeline, contextSwitchDelay);
 }
 
 /* ---------------------------------------------------------------
@@ -341,12 +409,14 @@ function cloneForMlfq(processes) {
 
 /**
  * @param {Array<Object>} processes — processManager.getProcesses() snapshot
- * @param {{timeQuantum?:number, allotment?:number, numLevels?:number}} [options]
+ * @param {{timeQuantum?:number, allotment?:number, numLevels?:number, contextSwitchDelay?:number}} [options]
  *   timeQuantum — Q0's RR slice length; each lower level doubles it (base default: 2)
  *   allotment   — Q0's total-time-before-demotion; each lower level doubles it (base default: 4)
  *   numLevels   — queue count, Q0..Q(numLevels-1) (default: 4, minimum: 2)
+ *   contextSwitchDelay — overhead ticks inserted whenever the CPU switches
+ *     to a different process (default: 0, no overhead)
  */
-export function mlfq(processes, { timeQuantum, allotment, numLevels } = {}) {
+export function mlfq(processes, { timeQuantum, allotment, numLevels, contextSwitchDelay } = {}) {
   const procs = cloneForMlfq(processes);
   if (procs.length === 0) return emptyResult();
 
@@ -446,7 +516,7 @@ export function mlfq(processes, { timeQuantum, allotment, numLevels } = {}) {
     // else: still mid-quantum and mid-allotment — keeps running next tick
   }
 
-  return buildResult(procs, timeline);
+  return buildResult(procs, timeline, contextSwitchDelay);
 }
 
 /* ---------------------------------------------------------------
@@ -455,22 +525,22 @@ export function mlfq(processes, { timeQuantum, allotment, numLevels } = {}) {
  * a switch statement of their own.
  * ------------------------------------------------------------- */
 
-export function runScheduler(algorithmKey, processes, { timeQuantum, allotment, numLevels } = {}) {
+export function runScheduler(algorithmKey, processes, { timeQuantum, allotment, numLevels, contextSwitchDelay } = {}) {
   switch (algorithmKey) {
     case 'fcfs':
-      return fcfs(processes);
+      return fcfs(processes, { contextSwitchDelay });
     case 'sjf':
-      return sjf(processes);
+      return sjf(processes, { contextSwitchDelay });
     case 'srtf':
-      return srtf(processes);
+      return srtf(processes, { contextSwitchDelay });
     case 'priority-np':
-      return priorityScheduling(processes, { preemptive: false });
+      return priorityScheduling(processes, { preemptive: false, contextSwitchDelay });
     case 'priority-p':
-      return priorityScheduling(processes, { preemptive: true });
+      return priorityScheduling(processes, { preemptive: true, contextSwitchDelay });
     case 'rr':
-      return roundRobin(processes, timeQuantum);
+      return roundRobin(processes, timeQuantum, { contextSwitchDelay });
     case 'mlfq':
-      return mlfq(processes, { timeQuantum, allotment, numLevels });
+      return mlfq(processes, { timeQuantum, allotment, numLevels, contextSwitchDelay });
     default:
       throw new Error(`Unknown scheduling algorithm: "${algorithmKey}"`);
   }

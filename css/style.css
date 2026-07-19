@@ -198,6 +198,18 @@ legend.panel__title {
   padding: 0 6px 0 0;
 }
 
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.panel__header .panel__title {
+  margin-bottom: 0;
+}
+
 /* =============================================================
    FORM FIELDS
    ============================================================= */
@@ -379,6 +391,12 @@ input[type="range"]::-moz-range-track {
 .btn--ghost:hover { color: var(--gold); }
 
 .btn--wide { flex: 1 1 100%; }
+
+.btn--small {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 11px;
+}
 
 /* =============================================================
    MESSAGE PANEL
@@ -592,6 +610,20 @@ tbody tr:hover td { background: rgba(52, 195, 255, 0.06); }
   );
   color: var(--text-faint);
   border: 1px dashed var(--gold-dim);
+}
+
+/* Context-switch overhead ticks (Phase 10 bonus) get their own hatch so
+   they're never mistaken for ordinary CPU-idle gaps. */
+.gantt-block--switch {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 92, 92, 0.16) 0,
+    rgba(255, 92, 92, 0.16) 4px,
+    rgba(255, 92, 92, 0.3) 4px,
+    rgba(255, 92, 92, 0.3) 8px
+  );
+  color: var(--red-alert);
+  border: 1px dashed rgba(255, 92, 92, 0.5);
 }
 
 /* MLFQ queue-level accent — a colored top edge on each Gantt block so the

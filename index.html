@@ -112,6 +112,11 @@
         <label for="allotmentInput">Allotment Time (Q0, ticks before demotion)</label>
         <input type="number" id="allotmentInput" name="allotmentInput" min="1" step="1" placeholder="4">
       </div>
+
+      <div class="field" id="contextSwitchField">
+        <label for="contextSwitchInput">Context-Switch Delay (ticks, 0 = off)</label>
+        <input type="number" id="contextSwitchInput" name="contextSwitchInput" min="0" step="1" placeholder="0">
+      </div>
     </fieldset>
 
     <!-- Panel 5: Action Message Panel -->
@@ -189,7 +194,10 @@
 
     <!-- Panel 6b: Process Results Table (per-process final metrics) -->
     <div class="panel panel--table" id="resultsPanel">
-      <h2 class="panel__title">08 · Process Results</h2>
+      <div class="panel__header">
+        <h2 class="panel__title">08 · Process Results</h2>
+        <button type="button" id="btnExportCsv" class="btn btn--ghost btn--small" disabled>⭳ Export CSV</button>
+      </div>
       <div class="table-scroll">
         <table id="resultsTable">
           <thead>

@@ -154,7 +154,7 @@ function finish() {
 function emptySnapshot() {
   return {
     second: 0,
-    cpu: { status: 'idle', processId: null, processName: null, level: null },
+    cpu: { status: 'idle', processId: null, processName: null, level: null, isContextSwitch: false },
     nextInQueue: null,
     processes: [],
     overallProgressPct: 0,
@@ -233,6 +233,7 @@ export function computeLiveSnapshot(tickIndex) {
     processId: entry.processId,
     processName: entry.processName,
     level: entry.level !== undefined ? entry.level : null,
+    isContextSwitch: !!entry.isContextSwitch,
   };
 
   const nextInQueue = findNextProcess(tickIndex + 1, entry.processId);
