@@ -79,7 +79,7 @@ export function renderSimStatusTable(snapshot, tbody) {
   tbody.innerHTML = '';
 
   if (!snapshot || !snapshot.processes.length) {
-    tbody.appendChild(buildEmptyRow('Simulation has not started.', 5));
+    tbody.appendChild(buildEmptyRow('Simulation has not started.', 6));
     return;
   }
 
@@ -89,6 +89,7 @@ export function renderSimStatusTable(snapshot, tbody) {
 
     row.appendChild(buildCell(p.name));
     row.appendChild(buildStatusCell(p.status));
+    row.appendChild(buildLevelCell(p.level));
     row.appendChild(buildCell(`${p.completionPct}%`));
     row.appendChild(buildCell(String(p.remainingTime)));
     row.appendChild(buildCell(String(p.waitingTime)));
@@ -101,24 +102,35 @@ export function renderSimStatusTable(snapshot, tbody) {
 export function resetSimStatusTable(tbody) {
   if (!tbody) return;
   tbody.innerHTML = '';
-  tbody.appendChild(buildEmptyRow('Simulation has not started.', 5));
+  tbody.appendChild(buildEmptyRow('Simulation has not started.', 6));
 }
 
 /**
- * Updates the three Metrics Panel read-outs.
- * @param {{avgWaitingTime:number, avgExecutionTime:number, totalExecutionTime:number}} metrics
- * @param {{metricAvgWaiting:HTMLElement, metricAvgExec:HTMLElement, metricTotalExec:HTMLElement}} dom
+ * Updates the Metrics Panel read-outs.
+ * @param {{avgWaitingTime:number, avgExecutionTime:number, totalExecutionTime:number,
+ *           avgTurnaroundTime?:number, avgResponseTime?:number}} metrics
+ * @param {{metricAvgWaiting:HTMLElement, metricAvgExec:HTMLElement, metricTotalExec:HTMLElement,
+ *           metricAvgTurnaround?:HTMLElement, metricAvgResponse?:HTMLElement}} dom
  */
 export function renderMetrics(metrics, dom) {
   if (!metrics || !dom) return;
   if (dom.metricAvgWaiting) dom.metricAvgWaiting.textContent = metrics.avgWaitingTime.toFixed(2);
   if (dom.metricAvgExec) dom.metricAvgExec.textContent = metrics.avgExecutionTime.toFixed(2);
   if (dom.metricTotalExec) dom.metricTotalExec.textContent = metrics.totalExecutionTime.toFixed(2);
+  if (dom.metricAvgTurnaround) {
+    dom.metricAvgTurnaround.textContent = (metrics.avgTurnaroundTime ?? 0).toFixed(2);
+  }
+  if (dom.metricAvgResponse) {
+    dom.metricAvgResponse.textContent = (metrics.avgResponseTime ?? 0).toFixed(2);
+  }
 }
 
 /** Resets the Metrics Panel to its zeroed default display. */
 export function resetMetrics(dom) {
-  renderMetrics({ avgWaitingTime: 0, avgExecutionTime: 0, totalExecutionTime: 0 }, dom);
+  renderMetrics(
+    { avgWaitingTime: 0, avgExecutionTime: 0, totalExecutionTime: 0, avgTurnaroundTime: 0, avgResponseTime: 0 },
+    dom
+  );
 }
 
 /**
@@ -156,7 +168,7 @@ export function resetCpuMatrix(dom) {
 /**
  * Appends a single 1-second Gantt block for the current tick. Clears the
  * "not started" placeholder the first time it's called after a reset.
- * @param {{second:number, processId:?number, processName:?string}} entry
+ * @param {{second:number, processId:?number, processName:?string, level?:?number}} entry
  * @param {HTMLElement} container
  */
 export function appendGanttBlock(entry, container) {
@@ -164,12 +176,14 @@ export function appendGanttBlock(entry, container) {
   const placeholder = container.querySelector('.gantt-chart__placeholder');
   if (placeholder) placeholder.remove();
 
+  const hasLevel = entry.level !== undefined && entry.level !== null;
   const block = document.createElement('div');
   block.className = entry.processId === null ? 'gantt-block gantt-block--idle' : 'gantt-block';
-  block.title = `t=${entry.second} — ${entry.processId === null ? 'CPU idle' : entry.processName}`;
+  block.title = `t=${entry.second} — ${entry.processId === null ? 'CPU idle' : entry.processName}${hasLevel ? ` (Q${entry.level})` : ''}`;
   block.textContent = entry.processId === null ? '·' : entry.processName;
   if (entry.processId !== null) {
     block.style.background = colorForProcess(entry.processId);
+    if (hasLevel) block.dataset.level = String(entry.level);
   }
 
   container.appendChild(block);
@@ -180,6 +194,45 @@ export function appendGanttBlock(entry, container) {
 export function resetGantt(container) {
   if (!container) return;
   container.innerHTML = '<p class="gantt-chart__placeholder">Timeline will render here once the simulation starts.</p>';
+}
+
+/**
+ * Renders the Process Results table (final per-process metrics) once a
+ * simulation completes — Process ID, Arrival, Burst, Completion,
+ * Turnaround, and Response Time, straight from algorithms.js's result.
+ * @param {Array<Object>} processes — result.processes from algorithms.js
+ *   (each has name, arrivalTime, burstTime, completionTime, turnaroundTime, responseTime)
+ * @param {HTMLTableSectionElement} tbody
+ */
+export function renderResultsTable(processes, tbody) {
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!processes || !processes.length) {
+    tbody.appendChild(buildEmptyRow('Run a simulation to see per-process results.', 6));
+    return;
+  }
+
+  processes
+    .slice()
+    .sort((a, b) => a.arrivalTime - b.arrivalTime || a.id - b.id)
+    .forEach((p) => {
+      const row = document.createElement('tr');
+      row.appendChild(buildCell(p.name));
+      row.appendChild(buildCell(String(p.arrivalTime)));
+      row.appendChild(buildCell(String(p.burstTime)));
+      row.appendChild(buildCell(String(p.completionTime)));
+      row.appendChild(buildCell(String(p.turnaroundTime)));
+      row.appendChild(buildCell(String(p.responseTime)));
+      tbody.appendChild(row);
+    });
+}
+
+/** Resets the Process Results table to its pre-run placeholder. */
+export function resetResultsTable(tbody) {
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  tbody.appendChild(buildEmptyRow('Run a simulation to see per-process results.', 6));
 }
 
 /**
@@ -209,6 +262,22 @@ function buildStatusCell(status) {
   pill.className = 'status-pill';
   pill.dataset.status = status;
   pill.textContent = STATUS_LABELS[status] || status;
+  td.appendChild(pill);
+  return td;
+}
+
+/** Renders a process's current MLFQ queue level as a color-coded pill, or
+ * an em-dash for algorithms that don't have levels (level is null). */
+function buildLevelCell(level) {
+  const td = document.createElement('td');
+  if (level === null || level === undefined) {
+    td.textContent = '—';
+    return td;
+  }
+  const pill = document.createElement('span');
+  pill.className = 'level-pill';
+  pill.dataset.level = String(level);
+  pill.textContent = `Q${level}`;
   td.appendChild(pill);
   return td;
 }

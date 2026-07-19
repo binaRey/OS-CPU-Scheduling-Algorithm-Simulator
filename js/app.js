@@ -19,9 +19,16 @@ const ALGORITHM_LABELS = {
   'priority-np': 'Priority (Non-Preemptive)',
   'priority-p': 'Priority (Preemptive)',
   rr: 'Round Robin',
+  mlfq: 'MLFQ',
 };
 
 const dom = {};
+
+/** Full result object from the most recent algorithms.runScheduler() call —
+ * kept around so handleSimComplete can render final per-process figures
+ * (completionTime/turnaroundTime/responseTime) that the live snapshot
+ * doesn't carry. */
+let lastSchedulingResult = null;
 
 function cacheDom() {
   dom.inputName = document.getElementById('inputName');
@@ -43,6 +50,8 @@ function cacheDom() {
   dom.quantumField = document.getElementById('quantumField');
   dom.quantumSlider = document.getElementById('quantumSlider');
   dom.quantumValue = document.getElementById('quantumValue');
+  dom.allotmentField = document.getElementById('allotmentField');
+  dom.allotmentInput = document.getElementById('allotmentInput');
   dom.speedSlider = document.getElementById('speedSlider');
   dom.speedValue = document.getElementById('speedValue');
 
@@ -50,10 +59,16 @@ function cacheDom() {
   dom.btnSimulate = document.getElementById('btnSimulate');
   dom.btnResetAll = document.getElementById('btnResetAll');
 
+  dom.ganttLevelLegend = document.getElementById('ganttLevelLegend');
+
   dom.simStatusBody = document.getElementById('simStatusBody');
   dom.metricAvgWaiting = document.getElementById('metricAvgWaiting');
   dom.metricAvgExec = document.getElementById('metricAvgExec');
   dom.metricTotalExec = document.getElementById('metricTotalExec');
+  dom.metricAvgTurnaround = document.getElementById('metricAvgTurnaround');
+  dom.metricAvgResponse = document.getElementById('metricAvgResponse');
+
+  dom.resultsBody = document.getElementById('resultsBody');
 
   dom.cpuStatus = document.getElementById('cpuStatus');
   dom.nextQueueName = document.getElementById('nextQueueName');
@@ -186,7 +201,10 @@ function handleSimulate() {
   const algorithmKey = dom.algorithmSelect.value;
   let result;
   try {
-    result = algorithms.runScheduler(algorithmKey, processes, { timeQuantum: dom.quantumSlider.value });
+    result = algorithms.runScheduler(algorithmKey, processes, {
+      timeQuantum: dom.quantumSlider.value,
+      allotment: dom.allotmentInput.value,
+    });
   } catch (err) {
     showMessage(err.message, 'error');
     return;
@@ -199,6 +217,9 @@ function handleSimulate() {
 
   uiRenderer.resetGantt(dom.ganttChart);
   uiRenderer.resetSimStatusTable(dom.simStatusBody);
+  uiRenderer.resetResultsTable(dom.resultsBody);
+
+  lastSchedulingResult = result;
 
   simulationEngine.configure({
     timeline: result.timeline,
@@ -208,6 +229,8 @@ function handleSimulate() {
       avgWaitingTime: result.metrics.avgWaitingTime,
       avgExecutionTime: result.metrics.avgBurstTime,
       totalExecutionTime: result.metrics.totalExecutionTime,
+      avgTurnaroundTime: result.metrics.avgTurnaroundTime,
+      avgResponseTime: result.metrics.avgResponseTime,
     },
     onTick: handleTick,
     onComplete: handleSimComplete,
@@ -227,7 +250,12 @@ function handleTick(snapshot) {
   uiRenderer.renderMetrics(snapshot.metrics, dom);
   uiRenderer.renderCpuMatrix(snapshot, dom);
   uiRenderer.appendGanttBlock(
-    { second: snapshot.second, processId: snapshot.cpu.processId, processName: snapshot.cpu.processName },
+    {
+      second: snapshot.second,
+      processId: snapshot.cpu.processId,
+      processName: snapshot.cpu.processName,
+      level: snapshot.cpu.level,
+    },
     dom.ganttChart
   );
 }
@@ -237,6 +265,9 @@ function handleSimComplete(finalSnapshot) {
   uiRenderer.renderMetrics(finalSnapshot.metrics, dom);
   uiRenderer.renderCpuMatrix(finalSnapshot, dom);
   uiRenderer.renderSystemLed(dom, false);
+  if (lastSchedulingResult) {
+    uiRenderer.renderResultsTable(lastSchedulingResult.processes, dom.resultsBody);
+  }
   setQueueControlsDisabled(false);
   showMessage('Simulation complete.', 'success');
 }
@@ -244,9 +275,11 @@ function handleSimComplete(finalSnapshot) {
 function handleResetAll() {
   simulationEngine.stopSimulation();
   processManager.resetProcesses();
+  lastSchedulingResult = null;
 
   refreshQueueTable();
   uiRenderer.resetSimStatusTable(dom.simStatusBody);
+  uiRenderer.resetResultsTable(dom.resultsBody);
   uiRenderer.resetMetrics(dom);
   uiRenderer.resetCpuMatrix(dom);
   uiRenderer.resetGantt(dom.ganttChart);
@@ -254,11 +287,12 @@ function handleResetAll() {
   setQueueControlsDisabled(false);
 
   dom.algorithmSelect.value = 'fcfs';
-  updateQuantumVisibility();
+  updateAlgorithmFieldsVisibility();
   dom.speedSlider.value = '1';
   dom.speedValue.textContent = '1×';
   dom.quantumSlider.value = '2';
   dom.quantumValue.textContent = '2';
+  dom.allotmentInput.value = '';
 
   clearInputFields();
   dom.positionInput.value = '';
@@ -271,9 +305,13 @@ function handleResetAll() {
  * Static UI wiring
  * ------------------------------------------------------------- */
 
-function updateQuantumVisibility() {
-  const isRoundRobin = dom.algorithmSelect.value === 'rr';
-  dom.quantumField.classList.toggle('is-hidden', !isRoundRobin);
+function updateAlgorithmFieldsVisibility() {
+  const algorithmKey = dom.algorithmSelect.value;
+  const isRoundRobin = algorithmKey === 'rr';
+  const isMlfq = algorithmKey === 'mlfq';
+  dom.quantumField.classList.toggle('is-hidden', !isRoundRobin && !isMlfq);
+  dom.allotmentField.classList.toggle('is-hidden', !isMlfq);
+  dom.ganttLevelLegend.classList.toggle('is-hidden', !isMlfq);
 }
 
 function wireSliderReadouts() {
@@ -286,7 +324,7 @@ function wireSliderReadouts() {
       simulationEngine.setSpeed(dom.speedSlider.value);
     }
   });
-  dom.algorithmSelect.addEventListener('change', updateQuantumVisibility);
+  dom.algorithmSelect.addEventListener('change', updateAlgorithmFieldsVisibility);
 }
 
 /* ---------------------------------------------------------------
@@ -306,7 +344,7 @@ function init() {
   cacheDom();
   bindEvents();
   wireSliderReadouts();
-  updateQuantumVisibility();
+  updateAlgorithmFieldsVisibility();
   refreshQueueTable();
 }
 

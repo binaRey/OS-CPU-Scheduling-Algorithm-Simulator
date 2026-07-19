@@ -99,12 +99,18 @@
           <option value="priority-np">Priority — Non-Preemptive</option>
           <option value="priority-p">Priority — Preemptive</option>
           <option value="rr">Round Robin</option>
+          <option value="mlfq">MLFQ — Multilevel Feedback Queue</option>
         </select>
       </div>
 
       <div class="field field--slider" id="quantumField">
         <label for="quantumSlider">Time Quantum <span class="field__value" id="quantumValue">2</span></label>
         <input type="range" id="quantumSlider" name="quantumSlider" min="1" max="10" step="1" value="2">
+      </div>
+
+      <div class="field" id="allotmentField">
+        <label for="allotmentInput">Allotment Time (Q0, ticks before demotion)</label>
+        <input type="number" id="allotmentInput" name="allotmentInput" min="1" step="1" placeholder="4">
       </div>
     </fieldset>
 
@@ -166,6 +172,7 @@
             <tr>
               <th scope="col">Process ID</th>
               <th scope="col">Status</th>
+              <th scope="col">Level</th>
               <th scope="col">Completion %</th>
               <th scope="col">Remaining Exec</th>
               <th scope="col">Waiting Time</th>
@@ -173,7 +180,31 @@
           </thead>
           <tbody id="simStatusBody">
             <tr class="table-empty-row">
-              <td colspan="5">Simulation has not started.</td>
+              <td colspan="6">Simulation has not started.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 6b: Process Results Table (per-process final metrics) -->
+    <div class="panel panel--table" id="resultsPanel">
+      <h2 class="panel__title">08 · Process Results</h2>
+      <div class="table-scroll">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th scope="col">Process ID</th>
+              <th scope="col">Arrival</th>
+              <th scope="col">Burst</th>
+              <th scope="col">Completion</th>
+              <th scope="col">Turnaround</th>
+              <th scope="col">Response</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr class="table-empty-row">
+              <td colspan="6">Run a simulation to see per-process results.</td>
             </tr>
           </tbody>
         </table>
@@ -183,7 +214,7 @@
     <div class="status-stack__row">
       <!-- Panel 7: Metrics Panel -->
       <div class="panel panel--metrics" id="metricsPanel">
-        <h2 class="panel__title">08 · Metrics</h2>
+        <h2 class="panel__title">09 · Metrics</h2>
         <div class="metric">
           <span class="metric__label">Avg Waiting Time</span>
           <span class="metric__value" id="metricAvgWaiting">0.00</span>
@@ -196,11 +227,19 @@
           <span class="metric__label">Total Execution Time</span>
           <span class="metric__value" id="metricTotalExec">0.00</span>
         </div>
+        <div class="metric">
+          <span class="metric__label">Avg Turnaround Time</span>
+          <span class="metric__value" id="metricAvgTurnaround">0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Avg Response Time</span>
+          <span class="metric__value" id="metricAvgResponse">0.00</span>
+        </div>
       </div>
 
       <!-- Panel 8: CPU Matrix Panel -->
       <div class="panel panel--cpu" id="cpuMatrixPanel">
-        <h2 class="panel__title">09 · CPU Matrix</h2>
+        <h2 class="panel__title">10 · CPU Matrix</h2>
         <div class="metric">
           <span class="metric__label">CPU Status</span>
           <span class="metric__value" id="cpuStatus">Idle</span>
@@ -222,7 +261,13 @@
 
   <!-- ================= BOTTOM — GANTT CHART ================= -->
   <section class="panel panel--gantt" id="ganttPanel" aria-label="Gantt chart timeline">
-    <h2 class="panel__title">10 · Gantt Timeline</h2>
+    <h2 class="panel__title">11 · Gantt Timeline</h2>
+    <div class="gantt-legend is-hidden" id="ganttLevelLegend" aria-label="MLFQ queue levels">
+      <span class="gantt-legend__item" data-level="0"><i></i>Q0 — highest</span>
+      <span class="gantt-legend__item" data-level="1"><i></i>Q1</span>
+      <span class="gantt-legend__item" data-level="2"><i></i>Q2</span>
+      <span class="gantt-legend__item" data-level="3"><i></i>Q3 — lowest</span>
+    </div>
     <div class="gantt-scroll">
       <div class="gantt-ruler" id="ganttRuler" aria-hidden="true"></div>
       <div class="gantt-chart" id="ganttChart">

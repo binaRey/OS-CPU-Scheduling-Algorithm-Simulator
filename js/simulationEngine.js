@@ -154,7 +154,7 @@ function finish() {
 function emptySnapshot() {
   return {
     second: 0,
-    cpu: { status: 'idle', processId: null, processName: null },
+    cpu: { status: 'idle', processId: null, processName: null, level: null },
     nextInQueue: null,
     processes: [],
     overallProgressPct: 0,
@@ -176,10 +176,15 @@ export function computeLiveSnapshot(tickIndex) {
   const elapsed = timelineRef.slice(0, tickIndex + 1);
 
   // executedTicks per process id, counted from the elapsed slice.
+  // levelById tracks each process's most recent known queue level (MLFQ
+  // only — timeline entries from other algorithms never carry `level`,
+  // so this stays empty and every process falls back to "not applicable").
   const executedTicks = new Map();
+  const levelById = new Map();
   elapsed.forEach((e) => {
     if (e.processId === null) return;
     executedTicks.set(e.processId, (executedTicks.get(e.processId) || 0) + 1);
+    if (e.level !== undefined && e.level !== null) levelById.set(e.processId, e.level);
   });
 
   const nowInclusive = currentSecond + 1; // "time" has advanced past this tick's second
@@ -219,6 +224,7 @@ export function computeLiveSnapshot(tickIndex) {
       completionPct: p.burstTime > 0 ? Math.round(((p.burstTime - remainingTime) / p.burstTime) * 100) : 0,
       waitingTime,
       executedTicks: executed,
+      level: levelById.has(p.id) ? levelById.get(p.id) : null,
     };
   });
 
@@ -226,6 +232,7 @@ export function computeLiveSnapshot(tickIndex) {
     status: entry.processId === null ? 'idle' : 'running',
     processId: entry.processId,
     processName: entry.processName,
+    level: entry.level !== undefined ? entry.level : null,
   };
 
   const nextInQueue = findNextProcess(tickIndex + 1, entry.processId);
